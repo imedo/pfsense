@@ -971,24 +971,34 @@ function ldap_get_groups($username, $authcfg) {
 	/* since we know the DN is in $_SESSION['ldapdn'] */
 	//$search    = ldap_read($ldap, $ldapdn, "(objectclass=*)", array($ldapgroupattribute));
 	if ($ldapscope == "one")
-                $ldapfunc = "ldap_list";
-        else
-                $ldapfunc = "ldap_search";
+	                $ldapfunc = "ldap_list";
+	        else
+	                $ldapfunc = "ldap_search";
+	        $ldapfunc = "ldap_search";
+	        $search    = @$ldapfunc($ldap, "cn=groups,dc=main-server,dc=imedo-intranet,dc=de", "(&(memberUid=$username)(objectclass=apple-group))", array("cn"));
+	        //print_r($ldapdn);
+	        //echo "<br/>";
+	        //print_r($ldapfilter);
+	        //echo "</br>";
+	        //print_r($ldapgroupattribute);
+	        //$search    = @ldap_search($ldap, $ldapdn, "(objectclass=*)", array($ldapgroupattribute));
+	        $info      = @ldap_get_entries($ldap, $search);
+	       // print_r($info);
 
-	$search    = @$ldapfunc($ldap, $ldapdn, $ldapfilter, array($ldapgroupattribute));
-	$info      = @ldap_get_entries($ldap, $search);
 
-	$countem = $info["count"];	
-	
-	if(is_array($info[0][$ldapgroupattribute])) {
-		/* Iterate through the groups and throw them into an array */
-		foreach ($info[0][$ldapgroupattribute] as $member) {
-			if (stristr($member, "CN=") !== false) {
-				$membersplit = explode(",", $member);
-				$memberof[] = preg_replace("/CN=/i", "", $membersplit[0]);
-			}
-		}
-	}
+
+	        $countem = $info["count"];
+
+	        if($countem > 0) {
+	                /* Iterate through the groups and throw them into an array */
+	                foreach ($info as $member) {
+	                        if ($member["cn"][0] !== ""){
+	                                array_push($memberof, $member["cn"][0]);
+	                        }
+	                }
+	        }
+	        $memberof = array_filter($memberof, 'strlen');
+	        //print_r($memberof);
 	
 	/* Time to close LDAP connection */
 	@ldap_unbind($ldap);
@@ -1286,30 +1296,29 @@ function auth_get_authserver_list() {
 }
 
 function getUserGroups($username, $authcfg) {
-	global $config;
+        global $config;
 
-	$allowed_groups = array();
-
-	switch($authcfg['type']) {
+        $allowed_groups = array();
+        $member_groups = array();
+        switch($authcfg['type']) {
         case 'ldap':
-		$allowed_groups = @ldap_get_groups($username, $authcfg);
-		break;
-	case 'radius':
-		break;
-	default:
-		$user = getUserEntry($username);
-		$allowed_groups = @local_user_get_groups($user, true);
-		break;
-	}
+                $allowed_groups = $member_groups = @ldap_get_groups($username, $authcfg);
+                break;
+        case 'radius':
+                break;
+        default:
+                $user = getUserEntry($username);
+                $allowed_groups = @local_user_get_groups($user, true);
+                break;
+        }
 
-	$member_groups = array();
         if (is_array($config['system']['group'])) {
                 foreach ($config['system']['group'] as $group)
                         if (in_array($group['name'], $allowed_groups))
-				$member_groups[] = $group['name'];
-	}
+                                $member_groups[] = $group['name'];
+        }
 
-	return $member_groups;
+        return $member_groups;
 }
 
 function authenticate_user($username, $password, $authcfg = NULL, &$attributes = array()) {
